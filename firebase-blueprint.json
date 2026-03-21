@@ -1,0 +1,65 @@
+{
+  "entities": {
+    "Builder": {
+      "title": "Builder",
+      "description": "A barndominium builder listed in the directory.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique ID for the builder." },
+        "name": { "type": "string", "description": "Business name." },
+        "location": { "type": "string", "description": "City and State." },
+        "rating": { "type": "number", "description": "Average rating (0-5)." },
+        "reviews": { "type": "integer", "description": "Number of reviews." },
+        "specialties": { "type": "array", "items": { "type": "string" }, "description": "List of specialties." },
+        "phone": { "type": "string", "description": "Contact phone number." },
+        "address": { "type": "string", "description": "Business physical address." },
+        "website": { "type": "string", "format": "uri", "description": "Business website URL." },
+        "description": { "type": "string", "description": "Detailed description of services." },
+        "isVerified": { "type": "boolean", "description": "Whether the builder is verified by BarndoExpert." },
+        "image": { "type": "string", "description": "URL to the builder's profile image." },
+        "ownerUid": { "type": "string", "description": "The UID of the user who owns this listing." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the listing was created." }
+      },
+      "required": ["name", "location", "phone", "ownerUid"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the BarndoExpert platform.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID." },
+        "email": { "type": "string", "format": "email", "description": "User's email address." },
+        "displayName": { "type": "string", "description": "User's display name." },
+        "role": { "type": "string", "enum": ["user", "builder", "admin"], "description": "User's role." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user signed up." }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "AnalyticsEvent": {
+      "title": "AnalyticsEvent",
+      "description": "A tracking event for builder listing interactions.",
+      "type": "object",
+      "properties": {
+        "builderId": { "type": "string", "description": "The ID of the builder being interacted with." },
+        "type": { "type": "string", "enum": ["website", "email", "call"], "description": "The type of interaction." },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the event occurred." },
+        "userAgent": { "type": "string", "description": "The browser user agent of the visitor." }
+      },
+      "required": ["builderId", "type", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/builders/{builderId}": {
+      "schema": "Builder",
+      "description": "Collection of all builders."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    },
+    "/analytics/{eventId}": {
+      "schema": "AnalyticsEvent",
+      "description": "Collection of tracking events."
+    }
+  }
+}

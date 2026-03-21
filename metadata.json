@@ -1,0 +1,7 @@
+{
+  "name": "BarndoExpert",
+  "description": "Interactive AI guide for barndominium builds, financing, and a directory to find local builders.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
