@@ -1,8 +1,8 @@
 import React from 'react';
-import { Home, MessageSquare, Search, Menu, X, LogIn, ShieldCheck, LogOut, User as UserIcon, LayoutDashboard, Settings } from 'lucide-react';
+import { Home, MessageSquare, Search, Menu, X, LogIn, ShieldCheck, LogOut, User as UserIcon, LayoutDashboard, Settings, Calculator } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-type TabId = 'home' | 'chat' | 'directory' | 'signup' | 'faq' | 'dashboard' | 'admin';
+type TabId = 'home' | 'chat' | 'directory' | 'signup' | 'faq' | 'dashboard' | 'admin' | 'calculator';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -21,6 +21,7 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
   const baseNavItems = [
     { id: 'home' as TabId, label: 'Home', icon: Home },
     { id: 'chat' as TabId, label: 'AI Expert', icon: MessageSquare },
+    { id: 'calculator' as TabId, label: 'Cost Calculator', icon: Calculator },
     { id: 'directory' as TabId, label: 'Find a Builder', icon: Search },
     { id: 'signup' as TabId, label: 'Builder Signup', icon: ShieldCheck },
   ];

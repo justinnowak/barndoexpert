@@ -8,6 +8,7 @@ import FAQ from './components/FAQ';
 import BuilderProfile from './components/BuilderProfile';
 import BuilderDashboard from './components/BuilderDashboard';
 import AdminPanel from './components/AdminPanel';
+import CostCalculator from './components/CostCalculator';
 import { auth, db, onAuthStateChanged, doc, getDoc, setDoc, serverTimestamp, OperationType, handleFirestoreError, signInWithPopup, googleProvider, collection, query, where, getDocs } from './firebase';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -61,7 +62,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'directory' | 'signup' | 'faq' | 'dashboard' | 'admin'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'chat' | 'directory' | 'signup' | 'faq' | 'dashboard' | 'admin' | 'calculator'>('home');
   const [selectedBuilder, setSelectedBuilder] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -200,6 +201,12 @@ export default function App() {
           )
         )}
         {activeTab === 'signup' && <BuilderSignup />}
+        {activeTab === 'calculator' && (
+          <CostCalculator
+            onStartChat={() => setActiveTab('chat')}
+            onFindBuilder={() => setActiveTab('directory')}
+          />
+        )}
         {activeTab === 'dashboard' && user && (
           <BuilderDashboard user={user} />
         )}
