@@ -93,7 +93,7 @@ service cloud.firestore {
              data.location is string && data.location.size() <= 100 &&
              data.phone is string && data.phone.size() <= 20 &&
              data.ownerUid == request.auth.uid &&
-             data.plan in ['Basic', 'Professional'] &&
+             data.plan in ['Basic', 'Starter', 'Professional'] &&
              data.createdAt is timestamp &&
              (!('image' in data) || (isValidUrl(data.image) && data.image.size() <= 500)) &&
              (!('website' in data) || (isValidUrl(data.website) && data.website.size() <= 200)) &&

@@ -77,35 +77,35 @@ export default function BuilderSignup() {
         // Use existing builder doc
         builderId = existingDocs.docs[0].id;
       } else {
-        // Step 3: Create builder doc in Firestore with pending_payment status
-        const planKey = selectedPlan?.toLowerCase() || 'basic';
-        const docRef = await addDoc(collection(db, 'builders'), {
+        // Step 3: Create builder doc in Firestore
+        // Map 'Starter' → 'Basic' to match Firestore rules allowed values
+        const planKey = selectedPlan === 'Starter' ? 'Basic' : (selectedPlan || 'Basic');
+
+        const builderData: Record<string, any> = {
           name: formData.businessName,
           email: formData.email,
           location: formData.location,
-          address: formData.address,
           phone: formData.phone,
-          website: formData.website,
-          description: formData.description,
-          specialties: formData.specialties.split(',').map(s => s.trim()).filter(s => s !== ''),
           ownerUid: auth.currentUser.uid,
           createdAt: serverTimestamp(),
           plan: planKey,
-          isVerified: false,
           status: 'pending_approval',
           subscriptionStatus: '',
           stripeCustomerId: '',
           stripeSubscriptionId: '',
           galleryImages: [],
-        });
+        };
+
+        // Only include optional fields if they have values (empty string fails URL validation)
+        if (formData.address) builderData.address = formData.address;
+        if (formData.website) builderData.website = formData.website;
+        if (formData.description) builderData.description = formData.description;
+        const specialties = formData.specialties.split(',').map(s => s.trim()).filter(s => s !== '');
+        if (specialties.length > 0) builderData.specialties = specialties;
+
+        const docRef = await addDoc(collection(db, 'builders'), builderData);
         builderId = docRef.id;
       }
-
-      // Beta: skip payment, set status to pending_approval for admin approval
-      const { doc, updateDoc } = await import('firebase/firestore');
-      await updateDoc(doc(db, 'builders', builderId), {
-        status: 'pending_approval',
-      });
 
       setSuccess(true);
     } catch (err: any) {
