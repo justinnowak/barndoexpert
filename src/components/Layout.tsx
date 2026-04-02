@@ -43,7 +43,10 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
               <div className="w-10 h-10 bg-brand-primary rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/10">
                 <Home size={24} />
               </div>
-              <span className="text-2xl font-serif italic font-bold tracking-tight text-stone-900">BarndoExpert</span>
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-serif italic font-bold tracking-tight text-stone-900">BarndoExpert</span>
+                <span className="px-2 py-0.5 bg-brand-accent text-white text-[10px] font-bold uppercase tracking-widest rounded-full">Beta</span>
+              </div>
             </div>
 
             {/* Desktop Nav */}

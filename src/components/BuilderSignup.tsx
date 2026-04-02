@@ -92,7 +92,7 @@ export default function BuilderSignup() {
           createdAt: serverTimestamp(),
           plan: planKey,
           isVerified: false,
-          status: 'pending_payment',
+          status: 'pending_approval',
           subscriptionStatus: '',
           stripeCustomerId: '',
           stripeSubscriptionId: '',
@@ -101,35 +101,13 @@ export default function BuilderSignup() {
         builderId = docRef.id;
       }
 
-      // Step 4: Call Stripe checkout API
-      const token = await auth.currentUser.getIdToken();
-      const planKey = selectedPlan?.toLowerCase() || 'basic';
-
-      const response = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          plan: planKey,
-          builderId,
-          email: formData.email,
-        }),
+      // Beta: skip payment, set status to pending_approval for admin approval
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'builders', builderId), {
+        status: 'pending_approval',
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to create checkout session');
-      }
-
-      // Step 5: Redirect to Stripe Checkout
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error('No checkout URL returned');
-      }
+      setSuccess(true);
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
         setError('Sign-in was cancelled. Please complete the sign-in to list your business.');
@@ -144,15 +122,17 @@ export default function BuilderSignup() {
 
   const plans = [
     {
-      name: 'Basic',
-      price: '$19',
+      name: 'Starter',
+      price: 'Free',
+      priceNote: 'During beta',
       features: ['Directory Listing', 'Contact Form', '5 Photos', 'Basic Support'],
       icon: Zap,
       color: 'bg-stone-100 text-stone-600'
     },
     {
       name: 'Professional',
-      price: '$29',
+      price: 'Free',
+      priceNote: 'During beta',
       features: ['Priority Listing', 'Verified Badge', '50 Photos', 'Analytics Dashboard', 'Direct Leads'],
       icon: ShieldCheck,
       color: 'bg-brand-accent/10 text-brand-accent',
@@ -185,7 +165,7 @@ export default function BuilderSignup() {
             Welcome aboard with the {selectedPlan} plan!
           </p>
         </motion.div>
-        <p className="text-stone-600">Your payment has been received and your builder profile has been created. Our team will review your application and activate your listing shortly.</p>
+        <p className="text-stone-600">Your builder profile has been created. Our team will review your application and activate your listing shortly.</p>
         <p className="text-stone-500 text-sm">You'll be able to access your dashboard once your listing is approved.</p>
         <button
           onClick={() => window.location.reload()}
@@ -313,7 +293,7 @@ export default function BuilderSignup() {
 
             <div className="mb-8">
               <span className="text-5xl font-bold text-stone-900">{plan.price}</span>
-              <span className="text-stone-500">/mo</span>
+              <span className="text-stone-400 text-sm ml-2">{plan.priceNote}</span>
             </div>
 
             <ul className="space-y-4 mb-10">
@@ -448,7 +428,7 @@ export default function BuilderSignup() {
                 disabled={isLoading}
                 className="w-full py-5 bg-brand-primary text-white rounded-2xl font-bold hover:bg-brand-primary/90 transition-all flex items-center justify-center gap-3 shadow-xl"
               >
-                {isLoading ? <Loader2 className="animate-spin" size={24} /> : 'Continue to Payment'}
+                {isLoading ? <Loader2 className="animate-spin" size={24} /> : 'Complete Signup — Free During Beta'}
                 {!isLoading && <ArrowRight size={24} />}
               </button>
               <p className="text-center text-stone-400 text-sm mt-4">
