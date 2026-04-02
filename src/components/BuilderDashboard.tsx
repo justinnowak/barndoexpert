@@ -4,13 +4,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import {
   LayoutDashboard, BarChart3, Edit3, ImagePlus, CreditCard,
   Eye, MousePointer2, Mail, PhoneCall, TrendingUp, Save, Loader2,
-  Upload, Trash2, AlertCircle, Check, Clock, XCircle, ExternalLink,
+  AlertCircle, Check, Clock, XCircle, ExternalLink,
   Camera
 } from 'lucide-react';
-import {
-  auth, db, collection, query, where, getDocs, updateDoc, doc,
-  onSnapshot, Timestamp, uploadFile, deleteFile
-} from '../firebase';
+import { useAuth } from '@clerk/clerk-react';
 
 interface BuilderDashboardProps {
   user: any;
@@ -26,6 +23,8 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { getToken } = useAuth();
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -47,24 +46,17 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
     chartData: [] as any[],
   });
 
-  // Photo upload state
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const profileInputRef = useRef<HTMLInputElement>(null);
-
   // Load builder doc
   useEffect(() => {
     if (!user?.uid) return;
-
-    const q = query(collection(db, 'builders'), where('ownerUid', '==', user.uid));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const docData = snapshot.docs[0];
-        setBuilderDoc({ id: docData.id, ...docData.data() });
-        setBuilderId(docData.id);
-
-        const data = docData.data();
+    const load = async () => {
+      try {
+        const token = await getToken();
+        const res = await fetch('/api/builders/me', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) { setLoading(false); return; }
+        const data = await res.json();
+        setBuilderDoc(data);
+        setBuilderId(data.id);
         setEditForm({
           name: data.name || '',
           phone: data.phone || '',
@@ -74,76 +66,33 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
           location: data.location || '',
           address: data.address || '',
         });
+      } catch (err) {
+        console.error('Failed to load builder:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
+    };
+    load();
+  }, [user, getToken]);
 
   // Load analytics
   useEffect(() => {
     if (!builderId) return;
 
     const loadAnalytics = async () => {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
       try {
-        const q = query(
-          collection(db, 'analytics'),
-          where('builderId', '==', builderId),
-          where('timestamp', '>=', Timestamp.fromDate(thirtyDaysAgo))
-        );
-
-        const snapshot = await getDocs(q);
-        let views = 0, webClicks = 0, emails = 0, calls = 0;
-        const dailyData: Record<string, { views: number; clicks: number }> = {};
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const type = data.type;
-          const date = data.timestamp?.toDate?.();
-          const dateKey = date ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Unknown';
-
-          if (!dailyData[dateKey]) dailyData[dateKey] = { views: 0, clicks: 0 };
-
-          switch (type) {
-            case 'profile_view':
-              views++;
-              dailyData[dateKey].views++;
-              break;
-            case 'website':
-              webClicks++;
-              dailyData[dateKey].clicks++;
-              break;
-            case 'email':
-              emails++;
-              break;
-            case 'call':
-              calls++;
-              break;
-          }
-        });
-
-        const chartData = Object.entries(dailyData)
-          .map(([date, data]) => ({ date, ...data }))
-          .slice(-14); // Last 14 days for chart
-
-        setAnalytics({
-          profileViews: views,
-          websiteClicks: webClicks,
-          emailClicks: emails,
-          phoneCalls: calls,
-          chartData,
-        });
+        const token = await getToken();
+        const res = await fetch('/api/builders/analytics', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        setAnalytics(data);
       } catch (err) {
         console.error('Failed to load analytics:', err);
       }
     };
 
     loadAnalytics();
-  }, [builderId]);
+  }, [builderId, getToken]);
 
   // Save edited listing
   const handleSave = async () => {
@@ -153,16 +102,21 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
     setSaveSuccess(false);
 
     try {
-      await updateDoc(doc(db, 'builders', builderId), {
-        name: editForm.name,
-        phone: editForm.phone,
-        website: editForm.website,
-        description: editForm.description,
-        specialties: editForm.specialties.split(',').map(s => s.trim()).filter(s => s),
-        location: editForm.location,
-        address: editForm.address,
-        updatedAt: Timestamp.now(),
+      const token = await getToken();
+      const res = await fetch('/api/builders/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          name: editForm.name,
+          phone: editForm.phone,
+          website: editForm.website,
+          description: editForm.description,
+          specialties: editForm.specialties.split(',').map(s => s.trim()).filter(s => s),
+          location: editForm.location,
+          address: editForm.address,
+        }),
       });
+      if (!res.ok) throw new Error('Failed to save changes');
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
@@ -173,96 +127,10 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
     }
   };
 
-  // Photo upload handler
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, isProfile = false) => {
-    const files = e.target.files;
-    if (!files?.length || !builderId) return;
-
-    const file = files[0];
-
-    // Validate
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      setError('Please upload a JPEG, PNG, or WebP image.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be smaller than 5MB.');
-      return;
-    }
-
-    // Check plan limits for gallery
-    if (!isProfile) {
-      const currentImages = builderDoc?.galleryImages?.length || 0;
-      const maxImages = builderDoc?.plan === 'professional' ? 50 : 5;
-      if (currentImages >= maxImages) {
-        setError(`Your ${builderDoc?.plan || 'Basic'} plan allows up to ${maxImages} gallery photos. Upgrade to add more.`);
-        return;
-      }
-    }
-
-    setUploading(true);
-    setError(null);
-
-    try {
-      const timestamp = Date.now();
-      const path = isProfile
-        ? `builders/${builderId}/profile.jpg`
-        : `builders/${builderId}/gallery/${timestamp}-${file.name}`;
-
-      const downloadURL = await uploadFile(path, file);
-
-      if (isProfile) {
-        await updateDoc(doc(db, 'builders', builderId), {
-          image: downloadURL,
-          updatedAt: Timestamp.now(),
-        });
-      } else {
-        const currentImages = builderDoc?.galleryImages || [];
-        await updateDoc(doc(db, 'builders', builderId), {
-          galleryImages: [...currentImages, downloadURL],
-          updatedAt: Timestamp.now(),
-        });
-      }
-    } catch (err: any) {
-      setError('Failed to upload image. Please try again.');
-      console.error('Upload error:', err);
-    } finally {
-      setUploading(false);
-      // Reset file input
-      if (isProfile && profileInputRef.current) profileInputRef.current.value = '';
-      if (!isProfile && fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  // Delete gallery image
-  const handleDeleteImage = async (imageUrl: string) => {
-    if (!builderId) return;
-    setError(null);
-
-    try {
-      // Delete from storage
-      try {
-        await deleteFile(imageUrl);
-      } catch (e) {
-        // Image might not exist in storage, continue with Firestore update
-      }
-
-      // Remove from Firestore
-      const currentImages = builderDoc?.galleryImages || [];
-      await updateDoc(doc(db, 'builders', builderId), {
-        galleryImages: currentImages.filter((url: string) => url !== imageUrl),
-        updatedAt: Timestamp.now(),
-      });
-    } catch (err: any) {
-      setError('Failed to delete image. Please try again.');
-      console.error('Delete error:', err);
-    }
-  };
-
   // Open Stripe billing portal
   const handleManageBilling = async () => {
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await getToken();
       const response = await fetch('/api/stripe/create-portal', {
         method: 'POST',
         headers: {
@@ -604,7 +472,7 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
             <div className="bg-white rounded-2xl border border-stone-200 p-8">
               <h3 className="text-xl font-bold text-stone-900 mb-4">Profile Photo</h3>
               <div className="flex items-center gap-6">
-                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-stone-100 border-2 border-stone-200 relative group">
+                <div className="w-24 h-24 rounded-2xl overflow-hidden bg-stone-100 border-2 border-stone-200 relative">
                   {builderDoc.image ? (
                     <img src={builderDoc.image} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
@@ -612,31 +480,10 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
                       <Camera size={32} />
                     </div>
                   )}
-                  <button
-                    onClick={() => profileInputRef.current?.click()}
-                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-                  >
-                    <Upload size={20} />
-                  </button>
                 </div>
                 <div>
-                  <button
-                    onClick={() => profileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="px-6 py-2.5 bg-brand-primary text-white rounded-xl font-bold hover:bg-brand-primary/90 transition-all flex items-center gap-2 text-sm"
-                  >
-                    {uploading ? <Loader2 className="animate-spin" size={16} /> : <Upload size={16} />}
-                    Upload Photo
-                  </button>
-                  <p className="text-stone-400 text-xs mt-2">JPEG, PNG, or WebP. Max 5MB.</p>
+                  <p className="text-stone-500 text-sm">Photo uploads coming soon.</p>
                 </div>
-                <input
-                  ref={profileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => handlePhotoUpload(e, true)}
-                  className="hidden"
-                />
               </div>
             </div>
 
@@ -650,36 +497,13 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
                     <span className="text-stone-400"> ({builderDoc.plan || 'Basic'} plan)</span>
                   </p>
                 </div>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="px-6 py-2.5 bg-brand-accent text-white rounded-xl font-bold hover:bg-brand-accent/90 transition-all flex items-center gap-2 text-sm"
-                >
-                  {uploading ? <Loader2 className="animate-spin" size={16} /> : <ImagePlus size={16} />}
-                  Add Photo
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(e) => handlePhotoUpload(e, false)}
-                  className="hidden"
-                />
               </div>
 
               {builderDoc.galleryImages?.length > 0 ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {builderDoc.galleryImages.map((url: string, index: number) => (
-                    <div key={index} className="relative group aspect-square rounded-xl overflow-hidden bg-stone-100">
+                    <div key={index} className="relative aspect-square rounded-xl overflow-hidden bg-stone-100">
                       <img src={url} alt={`Gallery ${index + 1}`} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <button
-                          onClick={() => handleDeleteImage(url)}
-                          className="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
                     </div>
                   ))}
                 </div>
@@ -687,7 +511,7 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
                 <div className="py-16 text-center border-2 border-dashed border-stone-200 rounded-2xl">
                   <ImagePlus size={40} className="mx-auto text-stone-300 mb-4" />
                   <p className="text-stone-500 font-medium">No gallery photos yet</p>
-                  <p className="text-stone-400 text-sm mt-1">Upload photos to showcase your work to homeowners.</p>
+                  <p className="text-stone-400 text-sm mt-1">Photo uploads coming soon.</p>
                 </div>
               )}
             </div>
@@ -722,10 +546,10 @@ export default function BuilderDashboard({ user }: BuilderDashboardProps) {
               <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
                 <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">Member Since</div>
                 <div className="text-lg font-bold text-stone-900">
-                  {builderDoc.createdAt?.toDate?.()?.toLocaleDateString('en-US', {
+                  {builderDoc.createdAt ? new Date(builderDoc.createdAt).toLocaleDateString('en-US', {
                     month: 'long',
                     year: 'numeric',
-                  }) || 'N/A'}
+                  }) : 'N/A'}
                 </div>
               </div>
             </div>

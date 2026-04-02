@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, ShieldCheck, Zap, CreditCard, ArrowRight, Loader2, AlertCircle, Search, TrendingUp, Users, MousePointer2, Mail, PhoneCall, LayoutDashboard, BarChart3, Eye } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { auth, db, addDoc, collection, serverTimestamp, OperationType, handleFirestoreError, signInWithPopup, googleProvider, query, where, getDocs } from '../firebase';
+import { useAuth, SignInButton } from '@clerk/clerk-react';
 
 export default function BuilderSignup() {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,6 +19,8 @@ export default function BuilderSignup() {
     description: '',
     specialties: ''
   });
+
+  const { isSignedIn, getToken } = useAuth();
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -51,70 +53,33 @@ export default function BuilderSignup() {
 
     setIsLoading(true);
     setError(null);
-
     try {
-      // Step 1: Ensure user is signed in
-      if (!auth.currentUser) {
-        await signInWithPopup(auth, googleProvider);
-      }
-
-      if (!auth.currentUser) {
-        setError('Sign-in is required to continue.');
+      if (!isSignedIn) {
+        setError('Please sign in to continue. Click the Sign In button in the top navigation.');
         setIsLoading(false);
         return;
       }
-
-      // Step 2: Check if user already has a builder listing
-      const existingQuery = query(
-        collection(db, 'builders'),
-        where('ownerUid', '==', auth.currentUser.uid)
-      );
-      const existingDocs = await getDocs(existingQuery);
-
-      let builderId: string;
-
-      if (!existingDocs.empty) {
-        // Use existing builder doc
-        builderId = existingDocs.docs[0].id;
-      } else {
-        // Step 3: Create builder doc in Firestore
-        // Map 'Starter' → 'Basic' to match Firestore rules allowed values
-        const planKey = selectedPlan === 'Starter' ? 'Basic' : (selectedPlan || 'Basic');
-
-        const builderData: Record<string, any> = {
+      const token = await getToken();
+      const res = await fetch('/api/builders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
           name: formData.businessName,
           email: formData.email,
           location: formData.location,
+          address: formData.address || undefined,
           phone: formData.phone,
-          ownerUid: auth.currentUser.uid,
-          createdAt: serverTimestamp(),
-          plan: planKey,
-          status: 'pending_approval',
-          subscriptionStatus: '',
-          stripeCustomerId: '',
-          stripeSubscriptionId: '',
-          galleryImages: [],
-        };
-
-        // Only include optional fields if they have values (empty string fails URL validation)
-        if (formData.address) builderData.address = formData.address;
-        if (formData.website) builderData.website = formData.website;
-        if (formData.description) builderData.description = formData.description;
-        const specialties = formData.specialties.split(',').map(s => s.trim()).filter(s => s !== '');
-        if (specialties.length > 0) builderData.specialties = specialties;
-
-        const docRef = await addDoc(collection(db, 'builders'), builderData);
-        builderId = docRef.id;
-      }
-
+          website: formData.website || undefined,
+          description: formData.description || undefined,
+          specialties: formData.specialties.split(',').map(s => s.trim()).filter(Boolean),
+          plan: selectedPlan === 'Starter' ? 'Basic' : (selectedPlan || 'Basic'),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Signup failed');
       setSuccess(true);
     } catch (err: any) {
-      if (err.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in was cancelled. Please complete the sign-in to list your business.');
-      } else {
-        setError(err.message || 'Failed to sign up. Please try again.');
-        console.error('Signup error:', err);
-      }
+      setError(err.message || 'Failed to sign up. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -156,7 +121,7 @@ export default function BuilderSignup() {
           <Check size={40} />
         </div>
         <h2 className="text-4xl font-serif italic text-stone-900">Welcome Aboard!</h2>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-brand-accent/5 border border-brand-accent/10 py-4 px-8 rounded-2xl inline-block mx-auto"
@@ -218,7 +183,7 @@ export default function BuilderSignup() {
               </div>
             </div>
           </div>
-          
+
           <div className="h-[300px] w-full bg-white rounded-2xl p-6 shadow-sm border border-stone-100">
             <div className="mb-4 flex items-center justify-between">
               <span className="text-sm font-bold text-stone-400 uppercase tracking-widest">Monthly Traffic Growth</span>
@@ -233,32 +198,32 @@ export default function BuilderSignup() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis 
-                  dataKey="month" 
-                  axisLine={false} 
-                  tickLine={false} 
+                <XAxis
+                  dataKey="month"
+                  axisLine={false}
+                  tickLine={false}
                   tick={{ fill: '#a8a29e', fontSize: 12 }}
                   dy={10}
                   padding={{ left: 20, right: 20 }}
                   scale="point"
                 />
                 <YAxis hide />
-                <Tooltip 
-                  contentStyle={{ 
-                    borderRadius: '12px', 
-                    border: 'none', 
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: '12px',
+                    border: 'none',
                     boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                     fontSize: '12px',
                     fontWeight: 'bold'
                   }}
                 />
-                <Area 
-                  type="monotone" 
-                  dataKey="visitors" 
-                  stroke="#F27D26" 
+                <Area
+                  type="monotone"
+                  dataKey="visitors"
+                  stroke="#F27D26"
                   strokeWidth={3}
-                  fillOpacity={1} 
-                  fill="url(#colorVisitors)" 
+                  fillOpacity={1}
+                  fill="url(#colorVisitors)"
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -280,7 +245,7 @@ export default function BuilderSignup() {
                 Most Popular
               </div>
             )}
-            
+
             <div className="flex items-center gap-4 mb-8">
               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${plan.color}`}>
                 <plan.icon size={24} />
@@ -307,13 +272,13 @@ export default function BuilderSignup() {
               ))}
             </ul>
 
-            <button 
+            <button
               onClick={() => setSelectedPlan(plan.name)}
               className={`w-full py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
               selectedPlan === plan.name
                 ? 'bg-brand-accent text-white shadow-lg shadow-brand-accent/20'
-                : plan.popular 
-                  ? 'bg-brand-accent text-white hover:bg-brand-accent/90 shadow-lg shadow-brand-accent/20' 
+                : plan.popular
+                  ? 'bg-brand-accent text-white hover:bg-brand-accent/90 shadow-lg shadow-brand-accent/20'
                   : 'bg-brand-primary text-white hover:bg-brand-primary/90'
             }`}>
               {selectedPlan === plan.name ? 'Plan Selected' : 'Select Plan'}
@@ -324,7 +289,7 @@ export default function BuilderSignup() {
       </div>
 
       {selectedPlan && (
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mt-16 bg-white rounded-[3rem] p-8 md:p-12 border border-stone-200 shadow-xl"
@@ -337,7 +302,7 @@ export default function BuilderSignup() {
           <form onSubmit={handleSignup} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Business Name *</label>
-              <input 
+              <input
                 required
                 name="businessName"
                 value={formData.businessName}
@@ -348,7 +313,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Contact Email *</label>
-              <input 
+              <input
                 required
                 name="email"
                 type="email"
@@ -360,7 +325,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Service Area (City, State) *</label>
-              <input 
+              <input
                 required
                 name="location"
                 value={formData.location}
@@ -371,7 +336,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Physical Address</label>
-              <input 
+              <input
                 name="address"
                 value={formData.address}
                 onChange={handleInputChange}
@@ -381,7 +346,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Phone Number *</label>
-              <input 
+              <input
                 required
                 name="phone"
                 value={formData.phone}
@@ -392,7 +357,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Website URL</label>
-              <input 
+              <input
                 name="website"
                 value={formData.website}
                 onChange={handleInputChange}
@@ -402,7 +367,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Specialties (comma separated)</label>
-              <input 
+              <input
                 name="specialties"
                 value={formData.specialties}
                 onChange={handleInputChange}
@@ -412,7 +377,7 @@ export default function BuilderSignup() {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-sm font-bold text-stone-700 uppercase tracking-wider">Business Description</label>
-              <textarea 
+              <textarea
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
@@ -421,9 +386,9 @@ export default function BuilderSignup() {
                 className="w-full px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary outline-none resize-none"
               />
             </div>
-            
+
             <div className="md:col-span-2 pt-4">
-              <button 
+              <button
                 type="submit"
                 disabled={isLoading}
                 className="w-full py-5 bg-brand-primary text-white rounded-2xl font-bold hover:bg-brand-primary/90 transition-all flex items-center justify-center gap-3 shadow-xl"
@@ -474,9 +439,9 @@ export default function BuilderSignup() {
         </div>
         <div className="flex-1 relative">
           <div className="aspect-square rounded-3xl overflow-hidden">
-            <img 
-              src="https://texascompletebarndosolutions.com/wp-content/uploads/2025/12/3D-rendered-barndominium-design-for-client-in-central-Texas.webp" 
-              alt="Successful Builder" 
+            <img
+              src="https://texascompletebarndosolutions.com/wp-content/uploads/2025/12/3D-rendered-barndominium-design-for-client-in-central-Texas.webp"
+              alt="Successful Builder"
               className="w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
@@ -507,7 +472,7 @@ export default function BuilderSignup() {
                 </div>
                 <span className="font-bold tracking-tight">BuilderHub</span>
               </div>
-              
+
               <nav className="space-y-1">
                 <div className="flex items-center gap-3 px-3 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-bold text-sm">
                   <BarChart3 size={18} />

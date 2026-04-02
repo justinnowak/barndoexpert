@@ -1,19 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Stripe from 'stripe';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { sql } from '@vercel/postgres';
+import { verifyToken } from '@clerk/backend';
 
-// Initialize Firebase Admin
-if (!getApps().length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || '{}');
-  initializeApp({
-    credential: cert(serviceAccount),
-  });
-}
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2025-04-30.basil' });
-const adminDb = getFirestore(process.env.FIRESTORE_DATABASE_ID || '(default)');
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-02-25.clover' });
 
 const PRICE_MAP: Record<string, string> = {
   basic: process.env.STRIPE_PRICE_BASIC!,
@@ -21,94 +11,46 @@ const PRICE_MAP: Record<string, string> = {
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    // Verify Firebase Auth token
     const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
+    if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await getAuth().verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! });
+    const userId = payload.sub;
 
     const { plan, builderId, email } = req.body;
-
-    if (!plan || !builderId || !email) {
-      return res.status(400).json({ error: 'Missing required fields: plan, builderId, email' });
-    }
+    if (!plan || !builderId || !email) return res.status(400).json({ error: 'Missing required fields' });
 
     const priceId = PRICE_MAP[plan];
-    if (!priceId) {
-      return res.status(400).json({ error: `Invalid plan: ${plan}` });
-    }
+    if (!priceId) return res.status(400).json({ error: `Invalid plan: ${plan}` });
 
-    // Verify builder doc exists and belongs to this user
-    const builderRef = adminDb.collection('builders').doc(builderId);
-    const builderDoc = await builderRef.get();
+    const { rows } = await sql`SELECT owner_id, stripe_customer_id FROM builders WHERE id = ${builderId} LIMIT 1`;
+    if (rows.length === 0) return res.status(404).json({ error: 'Builder not found' });
+    if (rows[0].owner_id !== userId) return res.status(403).json({ error: 'Not authorized' });
 
-    if (!builderDoc.exists) {
-      return res.status(404).json({ error: 'Builder not found' });
-    }
-
-    const builderData = builderDoc.data();
-    if (builderData?.ownerUid !== uid) {
-      return res.status(403).json({ error: 'Not authorized to manage this builder listing' });
-    }
-
-    // Create or retrieve Stripe customer
-    let stripeCustomerId = builderData?.stripeCustomerId;
-
+    let stripeCustomerId = rows[0].stripe_customer_id;
     if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
-        email,
-        metadata: {
-          firebaseUid: uid,
-          builderId,
-        },
-      });
+      const customer = await stripe.customers.create({ email, metadata: { clerkUserId: userId, builderId } });
       stripeCustomerId = customer.id;
-
-      // Save Stripe customer ID to builder doc
-      await builderRef.update({ stripeCustomerId });
+      await sql`UPDATE builders SET stripe_customer_id = ${stripeCustomerId} WHERE id = ${builderId}`;
     }
 
-    // Create Checkout Session
-    const origin = req.headers.origin || req.headers.referer?.replace(/\/$/, '') || 'https://barndoexpert.com';
-
+    const origin = req.headers.origin || 'https://barndoexpert.vercel.app';
     const session = await stripe.checkout.sessions.create({
       customer: stripeCustomerId,
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}?tab=dashboard&checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}?tab=signup&checkout=canceled`,
-      metadata: {
-        builderId,
-        firebaseUid: uid,
-        plan,
-      },
-      subscription_data: {
-        metadata: {
-          builderId,
-          firebaseUid: uid,
-          plan,
-        },
-      },
+      metadata: { builderId, clerkUserId: userId, plan },
     });
 
     return res.status(200).json({ url: session.url });
   } catch (error: any) {
     console.error('Checkout error:', error);
-    return res.status(500).json({ error: error.message || 'Internal server error' });
+    return res.status(500).json({ error: error.message });
   }
 }

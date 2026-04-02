@@ -1,6 +1,7 @@
 import React from 'react';
 import { Home, MessageSquare, Search, Menu, X, LogIn, ShieldCheck, LogOut, User as UserIcon, LayoutDashboard, Settings, Calculator } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { SignInButton, SignOutButton } from '@clerk/clerk-react';
 
 type TabId = 'home' | 'chat' | 'directory' | 'signup' | 'faq' | 'dashboard' | 'admin' | 'calculator';
 
@@ -13,9 +14,10 @@ interface LayoutProps {
   onSignOut: () => void;
   isBuilder?: boolean;
   isAdmin?: boolean;
+  clerkSignIn?: boolean;
 }
 
-export default function Layout({ children, activeTab, setActiveTab, user, onSignIn, onSignOut, isBuilder, isAdmin }: LayoutProps) {
+export default function Layout({ children, activeTab, setActiveTab, user, onSignIn, onSignOut, isBuilder, isAdmin, clerkSignIn }: LayoutProps) {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
 
   const baseNavItems = [
@@ -56,8 +58,8 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
                   key={item.id}
                   onClick={() => setActiveTab(item.id as any)}
                   className={`flex items-center gap-2 text-sm font-medium transition-all ${
-                    activeTab === item.id 
-                      ? "text-brand-primary underline underline-offset-8" 
+                    activeTab === item.id
+                      ? "text-brand-primary underline underline-offset-8"
                       : "text-stone-500 hover:text-stone-900"
                   }`}
                 >
@@ -71,22 +73,29 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
                     <UserIcon size={16} className="text-stone-500" />
                     <span className="text-sm font-medium text-stone-700">{user.displayName?.split(' ')[0]}</span>
                   </div>
-                  <button 
-                    onClick={onSignOut}
-                    className="p-2 text-stone-400 hover:text-red-500 transition-colors"
-                    title="Sign Out"
-                  >
-                    <LogOut size={18} />
-                  </button>
+                  <SignOutButton>
+                    <button
+                      className="p-2 text-stone-400 hover:text-red-500 transition-colors"
+                      title="Sign Out"
+                    >
+                      <LogOut size={18} />
+                    </button>
+                  </SignOutButton>
                 </div>
               ) : (
-                <button 
-                  onClick={onSignIn}
-                  className="ml-4 px-6 py-2 bg-stone-900 text-white rounded-full text-sm font-bold hover:bg-stone-800 transition-all flex items-center gap-2"
-                >
-                  <LogIn size={16} />
-                  Sign In
-                </button>
+                clerkSignIn ? (
+                  <SignInButton mode="modal">
+                    <button className="ml-4 px-6 py-2 bg-stone-900 text-white rounded-full text-sm font-bold hover:bg-stone-800 transition-all flex items-center gap-2">
+                      <LogIn size={16} /> Sign In
+                    </button>
+                  </SignInButton>
+                ) : (
+                  <SignOutButton>
+                    <button className="p-2 text-stone-400 hover:text-red-500 transition-colors" title="Sign Out">
+                      <LogOut size={18} />
+                    </button>
+                  </SignOutButton>
+                )
               )}
             </div>
 
@@ -117,8 +126,8 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
                       setIsMenuOpen(false);
                     }}
                     className={`flex items-center gap-3 w-full p-3 rounded-xl transition-all ${
-                      activeTab === item.id 
-                        ? "bg-brand-primary/5 text-brand-primary" 
+                      activeTab === item.id
+                        ? "bg-brand-primary/5 text-brand-primary"
                         : "text-stone-500 hover:bg-stone-50"
                     }`}
                   >
@@ -137,28 +146,38 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSign
                         <p className="text-xs text-stone-500">{user.email}</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        onSignOut();
-                        setIsMenuOpen(false);
-                      }}
-                      className="w-full p-4 bg-stone-100 text-stone-600 rounded-xl font-bold flex items-center justify-center gap-2"
-                    >
-                      <LogOut size={18} />
-                      Sign Out
-                    </button>
+                    <SignOutButton>
+                      <button
+                        onClick={() => setIsMenuOpen(false)}
+                        className="w-full p-4 bg-stone-100 text-stone-600 rounded-xl font-bold flex items-center justify-center gap-2"
+                      >
+                        <LogOut size={18} />
+                        Sign Out
+                      </button>
+                    </SignOutButton>
                   </div>
                 ) : (
-                  <button 
-                    onClick={() => {
-                      onSignIn();
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full p-4 bg-stone-900 text-white rounded-xl font-bold flex items-center justify-center gap-2"
-                  >
-                    <LogIn size={18} />
-                    Sign In
-                  </button>
+                  clerkSignIn ? (
+                    <SignInButton mode="modal">
+                      <button
+                        onClick={() => setIsMenuOpen(false)}
+                        className="w-full p-4 bg-stone-900 text-white rounded-xl font-bold flex items-center justify-center gap-2"
+                      >
+                        <LogIn size={18} />
+                        Sign In
+                      </button>
+                    </SignInButton>
+                  ) : (
+                    <SignOutButton>
+                      <button
+                        onClick={() => setIsMenuOpen(false)}
+                        className="w-full p-4 bg-stone-100 text-stone-600 rounded-xl font-bold flex items-center justify-center gap-2"
+                      >
+                        <LogOut size={18} />
+                        Sign Out
+                      </button>
+                    </SignOutButton>
+                  )
                 )}
               </div>
             </motion.div>

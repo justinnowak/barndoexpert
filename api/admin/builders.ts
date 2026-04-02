@@ -6,7 +6,7 @@ const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY! });
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'justin@completebarndo.com';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
@@ -14,28 +14,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const payload = await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY! });
-    const userId = payload.sub;
-
-    // Get user email from Clerk
-    const clerkUser = await clerk.users.getUser(userId);
+    const clerkUser = await clerk.users.getUser(payload.sub);
     const email = clerkUser.emailAddresses[0]?.emailAddress;
     if (email !== ADMIN_EMAIL) return res.status(403).json({ error: 'Admin access required' });
 
-    const { builderId, action } = req.body;
-    if (!builderId || !['approve', 'reject'].includes(action)) {
-      return res.status(400).json({ error: 'Invalid request' });
-    }
+    const { status } = req.query;
+    const { rows } = status
+      ? await sql`SELECT * FROM builders WHERE status = ${status as string} ORDER BY created_at DESC`
+      : await sql`SELECT * FROM builders ORDER BY created_at DESC`;
 
-    const newStatus = action === 'approve' ? 'active' : 'rejected';
-    await sql`
-      UPDATE builders
-      SET status = ${newStatus}, is_verified = ${action === 'approve'}, updated_at = NOW()
-      WHERE id = ${builderId}
-    `;
-
-    return res.status(200).json({ success: true, builderId, status: newStatus });
+    return res.status(200).json(rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      location: r.location,
+      phone: r.phone,
+      website: r.website,
+      description: r.description,
+      plan: r.plan,
+      status: r.status,
+      isVerified: r.is_verified,
+      createdAt: r.created_at,
+    })));
   } catch (err: any) {
-    console.error('Admin approve error:', err);
-    return res.status(500).json({ error: err.message || 'Internal server error' });
+    return res.status(500).json({ error: err.message });
   }
 }

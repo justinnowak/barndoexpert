@@ -4,7 +4,7 @@ import {
   ShieldCheck, Check, XCircle, Loader2, AlertCircle, Clock,
   MapPin, Phone, Globe, Mail, Eye, Calendar
 } from 'lucide-react';
-import { auth, db, collection, query, where, onSnapshot } from '../firebase';
+import { useAuth } from '@clerk/clerk-react';
 
 interface AdminPanelProps {
   user: any;
@@ -17,27 +17,31 @@ export default function AdminPanel({ user }: AdminPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('pending_approval');
 
+  const { getToken } = useAuth();
+
   useEffect(() => {
-    const q = query(collection(db, 'builders'), where('status', '==', filter));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setBuilders(data);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [filter]);
+    const load = async () => {
+      setLoading(true);
+      try {
+        const token = await getToken();
+        const res = await fetch(`/api/admin/builders?status=${filter}`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        setBuilders(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Failed to load builders:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [filter, getToken]);
 
   const handleAction = async (builderId: string, action: 'approve' | 'reject') => {
     setProcessing(builderId);
     setError(null);
 
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await getToken();
       const response = await fetch('/api/admin/approve', {
         method: 'POST',
         headers: {
@@ -51,6 +55,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
       if (!response.ok) {
         throw new Error(data.error || `Failed to ${action} builder`);
       }
+
+      // Remove the builder from the list after action
+      setBuilders(prev => prev.filter(b => b.id !== builderId));
     } catch (err: any) {
       setError(err.message || `Failed to ${action} builder`);
     } finally {
@@ -164,19 +171,9 @@ export default function AdminPanel({ user }: AdminPanelProps) {
                   <p className="text-stone-500 text-sm line-clamp-2">{builder.description}</p>
                 )}
 
-                {builder.specialties?.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {builder.specialties.map((spec: string, i: number) => (
-                      <span key={i} className="px-3 py-1 bg-stone-50 text-stone-600 rounded-lg text-xs font-medium border border-stone-100">
-                        {spec}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
                 <div className="flex items-center gap-2 text-xs text-stone-400">
                   <Calendar size={12} />
-                  Applied: {builder.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown'}
+                  Applied: {builder.createdAt ? new Date(builder.createdAt).toLocaleDateString() : 'Unknown'}
                 </div>
               </div>
 

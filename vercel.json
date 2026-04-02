@@ -1,10 +1,9 @@
 {
   "functions": {
-    "api/stripe/webhook.ts": {
-      "maxDuration": 30
-    }
+    "api/stripe/webhook.ts": { "maxDuration": 30 }
   },
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
